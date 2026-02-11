@@ -1,7 +1,6 @@
 package survivor;
 
 import java.util.ArrayList;
-import java.util.List;
 import survivor.entities.Entity;
 import survivor.entities.Hunter;
 import survivor.entities.Obstacle;
@@ -14,24 +13,24 @@ public class MapGrid {
     private static final String GREEN = "\u001B[32m";
     private static final String BROWN = "\033[38;5;130m";
 
-    private List<Obstacle> obstacles = new ArrayList<>();
-    private List<Prey> preys = new ArrayList<>();
-    private List<Hunter> hunters = new ArrayList<>();
+    private final ArrayList<Obstacle> obstacles = new ArrayList<>();
+    private final ArrayList<Prey> preys = new ArrayList<>();
+    private final ArrayList<Hunter> hunters = new ArrayList<>();
 
     private static final int[][] MOVES = {
             { 0, -1 }, { 0, 1 }, { -1, 0 }, { 1, 0 },
             { -1, -1 }, { 1, -1 }, { -1, 1 }, { 1, 1 }
     };
 
-    public List<Obstacle> getObstacles() {
+    public ArrayList<Obstacle> getObstacles() {
         return obstacles;
     }
 
-    public List<Prey> getPreys() {
+    public ArrayList<Prey> getPreys() {
         return preys;
     }
 
-    public List<Hunter> getHunters() {
+    public ArrayList<Hunter> getHunters() {
         return hunters;
     }
 
@@ -48,44 +47,50 @@ public class MapGrid {
             return true;
 
         for (int i = 0; i < obstacles.size(); i++) {
-            Obstacle o = obstacles.get(i);
-            if (o.getX() == x && o.getY() == y)
+            Obstacle obstacle = obstacles.get(i);
+            if (obstacle.getX() == x && obstacle.getY() == y)
                 return true;
         }
 
         for (int i = 0; i < hunters.size(); i++) {
-            Hunter h = hunters.get(i);
-            if (h.getX() == x && h.getY() == y)
+            Hunter hunter = hunters.get(i);
+            if (hunter.getX() == x && hunter.getY() == y)
                 return true;
         }
 
         for (int i = 0; i < preys.size(); i++) {
-            Prey p = preys.get(i);
-            if (p.getX() == x && p.getY() == y)
+            Prey prey = preys.get(i);
+            if (prey.getX() == x && prey.getY() == y)
                 return true;
         }
 
         return false;
     }
 
-    public int[] bestMove(Entity mover, int tx, int ty, boolean toward) {
+    public int[] bestMove(Entity mover, int tx, int ty, boolean front) {
         int bestX = mover.getX();
         int bestY = mover.getY();
-        int bestScore = toward ? Integer.MAX_VALUE : Integer.MIN_VALUE;
+        int bestScore = front ? Integer.MAX_VALUE : Integer.MIN_VALUE;
         boolean found = false;
 
         for (int[] MOVES1 : MOVES) {
-            int nx = mover.getX() + MOVES1[0];
-            int ny = mover.getY() + MOVES1[1];
-            if (isBlocked(nx, ny))
+            int newX = mover.getX() + MOVES1[0];
+            int newY = mover.getY() + MOVES1[1];
+            if (isBlocked(newX, newY))
                 continue;
-            int score = distance(nx, ny, tx, ty);
-            if ((toward && score < bestScore) ||
-                    (!toward && score > bestScore)) {
+            int score = distance(newX, newY, tx, ty);
+
+            if ((front && score < bestScore) || (!front && score > bestScore)) {
                 bestScore = score;
-                bestX = nx;
-                bestY = ny;
+                bestX = newX;
+                bestY = newY;
                 found = true;
+            } else if (score == bestScore) {
+                if (Math.random() < 0.5) {
+                    bestX = newX;
+                    bestY = newY;
+                    found = true;
+                }
             }
         }
 
@@ -99,11 +104,11 @@ public class MapGrid {
         int bestDist = Integer.MAX_VALUE;
 
         for (int i = 0; i < preys.size(); i++) {
-            Prey p = preys.get(i);
-            int d = distance(x, y, p.getX(), p.getY());
-            if (d < bestDist) {
-                bestDist = d;
-                best = p;
+            Prey prey = preys.get(i);
+            int actDist = distance(x, y, prey.getX(), prey.getY());
+            if (actDist < bestDist) {
+                bestDist = actDist;
+                best = prey;
             }
         }
         return best;
@@ -114,11 +119,11 @@ public class MapGrid {
         int bestDist = Integer.MAX_VALUE;
 
         for (int i = 0; i < hunters.size(); i++) {
-            Hunter h = hunters.get(i);
-            int d = distance(x, y, h.getX(), h.getY());
-            if (d < bestDist) {
-                bestDist = d;
-                best = h;
+            Hunter hunter = hunters.get(i);
+            int actDist = distance(x, y, hunter.getX(), hunter.getY());
+            if (actDist < bestDist) {
+                bestDist = actDist;
+                best = hunter;
             }
         }
         return best;
@@ -126,39 +131,57 @@ public class MapGrid {
 
     public void update() {
 
-        // Hunters kill adjacent preys
         for (int i = 0; i < hunters.size(); i++) {
-            Hunter h = hunters.get(i);
+            Hunter hunter = hunters.get(i);
+
             for (int j = preys.size() - 1; j >= 0; j--) {
-                Prey p = preys.get(j);
-                if (distance(h.getX(), h.getY(), p.getX(), p.getY()) == 1) {
-                    preys.remove(j);
+                Prey prey = preys.get(j);
+
+                int dx = Math.abs(hunter.getX() - prey.getX());
+                int dy = Math.abs(hunter.getY() - prey.getY());
+
+                if ((dx == 1 && dy == 0) ||
+                        (dx == 0 && dy == 1)) {
+
+                    int hunterVit = hunter.getVitality();
+                    int preyVit = prey.getVitality();
+                    double chanceHunter = (double) hunterVit /
+                            (hunterVit + preyVit);
+
+                    double roll = Math.random();
+
+                    if (roll < chanceHunter) {
+                        preys.remove(j);
+                    } else {
+                        hunters.remove(i);
+                        i--;
+                        break;
+                    }
                 }
             }
         }
 
-        // Hunters move
         for (int i = 0; i < hunters.size(); i++) {
-            Hunter h = hunters.get(i);
-            int[] move = h.chooseMove(this);
+            Hunter hunter = hunters.get(i);
+            int[] move = hunter.chooseMove(this);
             if (move != null)
-                h.move(move[0], move[1]);
+                hunter.move(move[0], move[1]);
         }
 
-        // Preys move
         for (int i = 0; i < preys.size(); i++) {
-            Prey p = preys.get(i);
-            int[] move = p.chooseMove(this);
+            Prey prey = preys.get(i);
+            int[] move = prey.chooseMove(this);
             if (move != null)
-                p.move(move[0], move[1]);
+                prey.move(move[0], move[1]);
         }
+
     }
 
     public void print() {
         System.out.println(
                 "Total: " + (preys.size() + hunters.size()) + GREEN +
                         " | Preys: " + preys.size() + RED +
-                        " | Hunters: " + hunters.size()+ RESET);
+                        " | Hunters: " + hunters.size() + RESET+"  ");
 
         String[][] grid = new String[GameConfig.HEIGHT][GameConfig.WIDTH];
 
@@ -168,7 +191,6 @@ public class MapGrid {
             }
         }
 
-        // Borders
         for (int x = 0; x < GameConfig.WIDTH; x++) {
             grid[0][x] = "*";
             grid[GameConfig.HEIGHT - 1][x] = "*";
@@ -178,29 +200,52 @@ public class MapGrid {
             grid[y][GameConfig.WIDTH - 1] = "*";
         }
 
-        // Obstacles (brown)
         for (int i = 0; i < obstacles.size(); i++) {
-            Obstacle o = obstacles.get(i);
-            grid[o.getY()][o.getX()] = BROWN + o.getSymbol() + RESET;
+            Obstacle obstacle = obstacles.get(i);
+            grid[obstacle.getY()][obstacle.getX()] = BROWN + obstacle.getSymbol() + RESET;
         }
 
-        // Preys (green)
         for (int i = 0; i < preys.size(); i++) {
-            Prey p = preys.get(i);
-            grid[p.getY()][p.getX()] = GREEN + p.getSymbol() + RESET;
+            Prey prey = preys.get(i);
+            grid[prey.getY()][prey.getX()] = GREEN + prey.getSymbol() + RESET;
         }
 
-        // Hunters (red)
         for (int i = 0; i < hunters.size(); i++) {
-            Hunter h = hunters.get(i);
-            grid[h.getY()][h.getX()] = RED + h.getSymbol() + RESET;
+            Hunter hunter = hunters.get(i);
+            grid[hunter.getY()][hunter.getX()] = RED + hunter.getSymbol() + RESET;
         }
 
         for (int y = 0; y < GameConfig.HEIGHT; y++) {
             for (int x = 0; x < GameConfig.WIDTH; x++) {
-                System.out.print(grid[y][x]);
+                System.out.print(grid[y][x] + " ");
             }
             System.out.println();
         }
     }
+
+    private void showVictory(String message, String color) {
+        System.out.print("\033[H");
+        System.out.println("\n\n");
+        System.out.println(color);
+        System.out.println("#################################");
+        System.out.println("########   " + message + "   ########");
+        System.out.println("#################################");
+        System.out.println(RESET);
+    }
+
+    public boolean checkVictory() {
+
+        if (hunters.isEmpty() && !preys.isEmpty()) {
+            showVictory(" PREYS WIN ", GREEN);
+            return true;
+        }
+
+        if (preys.isEmpty() && !hunters.isEmpty()) {
+            showVictory("HUNTERS WIN", RED);
+            return true;
+        }
+
+        return false;
+    }
+
 }
